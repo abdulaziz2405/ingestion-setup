@@ -54,3 +54,4 @@ systemctl enable --now influxdb.service
 ```
 
 Now InfluxDB should be available in your server at port 8086 (http://localhost:8086 or http://<SERVER_IP>:8086). You can continue setup in that page
+
