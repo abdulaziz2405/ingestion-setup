@@ -1,6 +1,6 @@
 # Prerequisites:
 - You have installed docker engine installed via apt in your system.
-- You have a ready to use directory for node-red data which we will consider as `<data_directory>`
+- You have a ready to use directory for node-red data which we will consider as `<node_red_data_directory>`
 # Setting up a node-red
 ### 1. Run the systemd service
 
@@ -20,7 +20,7 @@ ExecStartPre=-/usr/bin/docker rm node-red
 ExecStart=/usr/bin/docker run \
     --name node-red \
     -p 1880:1880 \
-    -v <data_directory>:/data \
+    -v <node_red_data_directory>:/data \
     nodered/node-red
 
 ExecStop=-/usr/bin/docker stop -t 60 node-red
@@ -35,9 +35,9 @@ SuccessExitStatus=SIGKILL SIGTERM 143 137
 WantedBy=multi-user.target
 WantedBy=docker.service
 ```
-Place the ready to use pipelines stored in this repository `configs/node-red.tar.gz` to `<data_directory>`:
+Place the ready to use pipelines stored in this repository `configs/node-red.tar.gz` to `<node_red_data_directory>`:
 ```
-tar -xzf configs/node-red.tar.gz <data_directory>
+tar -xzf configs/node-red.tar.gz <node_red_data_directory>
 ```
 
 Reload the systemd:
@@ -56,7 +56,7 @@ Execute the following command to create a hash password for admin user when the 
 ```
 docker exec -it node-red npx node-red admin hash-pw
 ```
-Place the saved password to the following configuration file which should be placed at <data_directory>/settings.js:
+Place the saved password to the following configuration file which should be placed at <node_red_data_directory>/settings.js:
 ```
 module.exports = {
     adminAuth: {

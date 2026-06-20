@@ -1,7 +1,19 @@
 
 Create data directory
 ```bash
-mkdir -p /mnt/data/mosquitto/{config,data,log}
+mkdir -p <mosquitto_data_directory>/{config,data,log}
+```
+
+
+Create `<mosquitto_data_directory>/config/mosquitto.conf`:
+```
+persistence true
+persistence_location /mosquitto/data/
+
+log_dest file /mosquitto/log/mosquitto.log
+
+allow_anonymous false
+password_file /mosquitto/config/passwd
 ```
 
 
@@ -19,9 +31,9 @@ ExecStart=/usr/bin/docker run \
     --name mosquitto \
     -p 1883:1883 \
     -p 9001:9001 \
-    -v /mnt/data/mosquitto/config:/mosquitto/config \
-    -v /mnt/data/mosquitto/data:/mosquitto/data \
-    -v /mnt/data/mosquitto/log:/mosquitto/log \
+    -v <mosquitto_data_directory>/config:/mosquitto/config \
+    -v <mosquitto_data_directory>/data:/mosquitto/data \
+    -v <mosquitto_data_directory>/log:/mosquitto/log \
     eclipse-mosquitto:1.6.11
 
 ExecStop=-/usr/bin/docker stop -t 60 mosquitto
@@ -47,7 +59,7 @@ systemctl enable --now prod-ingestion-mosquitto-01.service
 
 Check logs of mosquitto
 ```bash
-tail -f /mnt/data/mosquitto/log/mosquitto.log
+tail -f <mosquitto_data_directory>/log/mosquitto.log
 ```
 
 Mosquitto is working if you see logs like this:
