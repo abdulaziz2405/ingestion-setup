@@ -14,8 +14,7 @@ gpg --show-keys --with-fingerprint --with-colons ./influxdata-archive.key 2>&1 |
 
 # Add repo
 cat influxdata-archive.key | gpg --dearmor | sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
-echo 'deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main'
-sudo tee /etc/apt/sources.list.d/influxdata.list
+echo 'deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
 
 # Install influxdb
 sudo apt-get update
