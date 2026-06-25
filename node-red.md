@@ -40,6 +40,11 @@ Place the ready to use pipelines stored in this repository `configs/node-red.tar
 tar -xzf configs/node-red.tar.gz <node_red_data_directory>
 ```
 
+Give access to node-red to manage its data directory:
+```
+chown -R 1000:1000 <node_red_data_directory>
+```
+
 Reload the systemd:
 ```
 systemctl daemon-reload
