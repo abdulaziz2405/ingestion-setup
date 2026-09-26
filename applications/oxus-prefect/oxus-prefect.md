@@ -8,7 +8,17 @@ Variables that are used here and require change:
 
 Prerequisites:
 - Vault Agent is installed and rendering secrets into `/opt/app/shared/secrets/`, see [Vault Agent](../../tools/vault/vault-agent.md).
-- The runner has git access to GitLab, see [GitLab Runner](../../tools/gitlab-runner.md), step 3.
+- [Oxus-Backend](../oxus-backend/oxus-backend.md) and [Oxus-Models](../oxus-models/oxus-models.md) are up.
+- The databases are filled, see [Seed](../agrobank-seed.md). The prod deployments run on a schedule
+  and expect the data to be there.
+
+Prefect only orchestrates. It has no access to the application databases, Influx, Redis or S3:
+every job is an HTTP call to the backend or oxus-models API, authenticated with that app's
+`INTERNAL_API_TOKEN`. The flows are baked into the image, nothing is mounted from disk.
+
+Both apps accept `/internal/*` calls only from private addresses (RFC 1918 and loopback) and
+without proxy forwarding headers, so the worker talks to them directly by `<APPLICATION_SERVER>`,
+never through the gateway domain.
 
 ## 1. Preparing the database
 
@@ -50,38 +60,7 @@ Vault Agent renders these two paths into two separate files on the application s
 
 Both units below read those files, so Vault Agent must be running before you start them.
 
-## 3. Code checkout on disk
-
-The flows and the sibling helpers they import are mounted from disk, so three repositories
-have to be cloned onto the server itself.
-
-All of `/apps` belongs to `gitlab-runner`, which is the user that reaches GitLab from this
-server: the deploy pipeline checks out `oxus-prefect` as it, and the other two are pulled
-through it. Its SSH key and `known_hosts` are set up in
-[GitLab Runner](../../tools/gitlab-runner.md), step 3, and have to be in place first.
-
-```bash
-mkdir -p /apps
-chown gitlab-runner: /apps
-
-sudo -u gitlab-runner -H git clone -b agrobank git@gitlab.com:amudario/development/oxus-prefect.git  /apps/oxus-prefect
-sudo -u gitlab-runner -H git clone -b agrobank git@gitlab.com:amudario/development/oxus-models.git  /apps/oxus-models
-sudo -u gitlab-runner -H git clone -b agrobank git@gitlab.com:amudario/development/backend2.git  /apps/oxus-backend
-```
-
-`/apps/oxus-prefect` is kept current by the deploy pipeline, which checks out the commit it
-deploys and restarts the worker. It stays on a detached HEAD, so do not `git pull` it by hand.
-
-`/apps/oxus-models` and `/apps/oxus-backend` are **not** touched by any pipeline.
-When the helpers the flows import change, refresh those two yourself and restart the worker:
-
-```bash
-sudo -u gitlab-runner -H git -C /apps/oxus-models pull
-sudo -u gitlab-runner -H git -C /apps/oxus-backend pull
-systemctl restart agrobank-app-oxus-prefect-worker
-```
-
-## 4. Image tag files: one per unit
+## 3. Image tag files: one per unit
 
 Server and worker run the same image, so both tag files carry the same `PIPELINE_IID`.
 They are kept separate so the two units can be rolled forward independently.
@@ -103,15 +82,13 @@ chmod 600 /etc/oxus-prefect/server.env /etc/oxus-prefect/worker.env
 ```
 
 Pull the initial image. Root has to be logged in to the registry, see
-[GitLab Runner](../../tools/gitlab-runner.md), step 4. That deploy token is a separate
-credential from the runner's SSH key: the key reaches the git repositories, the token reaches
-the registry.
+[GitLab Runner](../../tools/gitlab-runner.md), step 3.
 
 ```bash
 docker pull registry.gitlab.com/amudario/development/oxus-prefect:agrobank-<PIPELINE_IID>
 ```
 
-## 5. Systemd units
+## 4. Systemd units
 
 Server - `/etc/systemd/system/agrobank-app-oxus-prefect-server.service`:
 
@@ -180,20 +157,13 @@ ExecStartPre=-/usr/bin/docker rm -f prefect-init
 
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 120); do curl -fsS http://<APPLICATION_SERVER>:4200/api/health >/dev/null 2>&1 && exit 0; sleep 1; done; echo "server API not ready" >&2; exit 1'
 
-# deploy dev manifest
+# deploy prod manifest
 ExecStartPre=/usr/bin/docker run --rm \
     --name prefect-init \
     --network host \
     --env-file /opt/app/shared/secrets/oxus-prefect-worker-agro.env \
     --cpus 1 --memory 768m --memory-swap 768m \
-    -e PREFECT_DEPLOY_FILE=prefect.dev.yaml \
-    -v /apps/oxus-prefect/flows:/opt/prefect/flows \
-    -v /apps/oxus-prefect/scripts:/opt/prefect/scripts:ro \
-    -v /apps/oxus-prefect/prefect.prod.yaml:/opt/prefect/prefect.prod.yaml:ro \
-    -v /apps/oxus-prefect/prefect.dev.yaml:/opt/prefect/prefect.dev.yaml:ro \
-    -v /apps/oxus-prefect/oxus_models:/opt/prefect/oxus_models:ro \
-    -v /apps/oxus-backend/scrapers:/opt/prefect/oxus_backend_scrapers:ro \
-    -v /apps/oxus-models/knowledge_base:/opt/prefect/knowledge_base:ro \
+    -e PREFECT_DEPLOY_FILE=prefect.prod.yaml \
     -w /opt/prefect \
     ${IMAGE}:${TAG} \
     bash /opt/prefect/scripts/init.sh
@@ -209,12 +179,6 @@ ExecStart=/usr/bin/docker run --rm \
     --cpu-shares 256 \
     --oom-score-adj 500 \
     --pids-limit 512 \
-    -v /apps/oxus-prefect/flows:/opt/prefect/flows \
-    -v /apps/oxus-prefect/prefect.prod.yaml:/opt/prefect/prefect.prod.yaml:ro \
-    -v /apps/oxus-prefect/prefect.dev.yaml:/opt/prefect/prefect.dev.yaml:ro \
-    -v /apps/oxus-prefect/oxus_models:/opt/prefect/oxus_models:ro \
-    -v /apps/oxus-backend/scrapers:/opt/prefect/oxus_backend_scrapers:ro \
-    -v /apps/oxus-models/knowledge_base:/opt/prefect/knowledge_base:ro \
     -w /opt/prefect \
     --health-cmd 'curl -fsS http://<APPLICATION_SERVER>:4200/api/health || exit 1' \
     --health-interval 30s \
@@ -222,7 +186,7 @@ ExecStart=/usr/bin/docker run --rm \
     --health-retries 3 \
     --health-start-period 30s \
     ${IMAGE}:${TAG} \
-    prefect worker start --pool dev --type process
+    prefect worker start --pool prod --type process
 
 TimeoutStopSec=150
 ExecStop=/usr/bin/docker stop -t 120 prefect-worker
@@ -231,30 +195,10 @@ ExecStop=/usr/bin/docker stop -t 120 prefect-worker
 WantedBy=multi-user.target
 ```
 
-Prefect deployments init script needed for worker at `/opt/prefect/scripts/init.sh`:
-```shell
-#!/usr/bin/env bash
-set -euo pipefail
-
-cd /opt/prefect
-
-DEPLOY_FILE="${PREFECT_DEPLOY_FILE:-prefect.dev.yaml}"
-
-echo "[init] creating work pools (idempotent)…"
-for pool in dev test prod; do
-if prefect work-pool inspect "${pool}" >/dev/null 2>&1; then
-echo "[init] work pool '${pool}' already exists — skipping"
-else
-prefect work-pool create "${pool}" --type process
-echo "[init] created work pool '${pool}'"
-fi
-done
-
-echo "[init] applying deployments from ${DEPLOY_FILE}…"
-prefect deploy --all --prefect-file "/opt/prefect/${DEPLOY_FILE}"
-
-echo "[init] done."
-```
+The `prefect-init` step runs `/opt/prefect/scripts/init.sh` from the image: it creates the
+`dev`, `test` and `prod` work pools if missing and applies the deployments from `prefect.prod.yaml`:
+all of them bind to the `prod` pool, and the scheduled ones run on their cron (Asia/Tashkent).
+The worker listens on `prod` only; the `dev` and `test` pools stay empty.
 
 Start the units in the correct order:
 

@@ -30,7 +30,7 @@ docker network create oxus-models-agrobank
 ```
 
 Pull the initial image. Root has to be logged in to the registry, see
-[GitLab Runner](../../tools/gitlab-runner.md), step 4:
+[GitLab Runner](../../tools/gitlab-runner.md), step 3:
 
 ```bash
 docker pull registry.gitlab.com/amudario/development/oxus-models:agrobank-<PIPELINE_IID>

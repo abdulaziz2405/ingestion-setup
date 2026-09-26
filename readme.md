@@ -23,6 +23,7 @@ You'll find these corresponding host variables in the docs:
 - [InfluxDB](./ingestion/influxdb.md)
 - [Mosquitto](./ingestion/mosquitto.md)
 - [Node-RED](./ingestion/node-red.md)
+- [Ingestion test](./ingestion/ingestion-test.md)
 
 ### Tools
 
@@ -37,6 +38,7 @@ You'll find these corresponding host variables in the docs:
 
 - [Oxus-Backend](./applications/oxus-backend/oxus-backend.md)
 - [Oxus-Models](./applications/oxus-models/oxus-models.md)
+- [Seed](./applications/agrobank-seed.md)
 - [Oxus-Prefect](./applications/oxus-prefect/oxus-prefect.md)
 - [Oxus-Frontend](./applications/oxus-frontend/oxus-frontend.md)
 
@@ -55,7 +57,9 @@ You'll find these corresponding host variables in the docs:
 | 7 | [Vault](./tools/vault/vault.md) | Tools |
 | 8 | [Vault Agent](./tools/vault/vault-agent.md) | Tools |
 | 9 | [GitLab Runner](./tools/gitlab-runner.md) | Tools |
-| 10 | [Oxus-Backend](./applications/oxus-backend/oxus-backend.md) | Applications |
-| 11 | [Oxus-Models](./applications/oxus-models/oxus-models.md) | Applications |
-| 12 | [Oxus-Prefect](./applications/oxus-prefect/oxus-prefect.md) | Applications |
-| 13 | [Oxus-Frontend](./applications/oxus-frontend/oxus-frontend.md) | Applications |
+| 10 | [Ingestion test](./ingestion/ingestion-test.md) | Ingestion |
+| 11 | [Oxus-Backend](./applications/oxus-backend/oxus-backend.md) | Applications |
+| 12 | [Oxus-Models](./applications/oxus-models/oxus-models.md) | Applications |
+| 13 | [Seed](./applications/agrobank-seed.md) | Applications |
+| 14 | [Oxus-Prefect](./applications/oxus-prefect/oxus-prefect.md) | Applications |
+| 15 | [Oxus-Frontend](./applications/oxus-frontend/oxus-frontend.md) | Applications |

@@ -22,7 +22,7 @@ mkdir -p /etc/oxus-backend
 ```
 
 Pull the initial image. Root has to be logged in to the registry, see
-[GitLab Runner](../../tools/gitlab-runner.md), step 4:
+[GitLab Runner](../../tools/gitlab-runner.md), step 3:
 
 ```bash
 docker pull registry.gitlab.com/amudario/development/backend2:agrobank-<PIPELINE_IID>

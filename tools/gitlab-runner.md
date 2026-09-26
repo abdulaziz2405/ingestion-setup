@@ -3,7 +3,7 @@
 Variables that are used here and require change:
 - `<RUNNER_TAG>`: the tag by which the runner is going to be triggered, like `agrobank-oxus`
 - `<RUNNER_TOKEN>`: the `glrt-`-prefixed token GitLab shows once the runner is created
-- `<DEPLOY_TOKEN_USERNAME>`: username of the deploy token used in step 4
+- `<DEPLOY_TOKEN_USERNAME>`: username of the deploy token used in step 3
 
 Deploys are done by a tagged GitLab shell runner installed on the application server.
 
@@ -83,42 +83,7 @@ visudo -cf /etc/sudoers.d/gitlab-runner-deploy-prefect
 systemctl restart gitlab-runner
 ```
 
-## 3. Git access
-
-GitLab user needs its **public key** added to the deploy keys, to fetch from repos. 
-Generate it (make sure there's **NO** passphrase):
-```bash
-sudo -u gitlab-runner -H mkdir -p /home/gitlab-runner/.ssh
-sudo -u gitlab-runner -H ssh-keygen -t ed25519 -N '' -C 'gitlab-runner' -f /home/gitlab-runner/.ssh/id_ed25519
-```
-
-Extract the public key:
-```bash
-cat /home/gitlab-runner/.ssh/id_ed25519.pub
-```
-
-Add the printed public key in GitLab under **Settings → Repository → Deploy keys** of the
-- oxus-backend
-- oxus-models
-- oxus-prefect
-
-Leave "Grant write permissions to this key" unticked (don't grant).
-
-Once you add into one project, you will be able to simply hit "Enable" for the other ones.
-
-Now record GitLab's host keys for the same user, into the `known_hosts` file:
-```bash
-sudo -u gitlab-runner -H sh -c 'ssh-keyscan gitlab.com >> /home/gitlab-runner/.ssh/known_hosts'
-```
-
-Verify.
-This passes only if the host is trusted and the key is accepted:
-
-```bash
-sudo -u gitlab-runner -H git ls-remote git@gitlab.com:amudario/development/oxus-prefect.git >/dev/null && echo OK
-```
-
-## 4. Log in to the Container Registry
+## 3. Log in to the Container Registry
 
 This login is for the systemd-unit, not the runner. 
 
