@@ -1,0 +1,28 @@
+# Use EITHER this file OR httproute.yaml, not both.
+# Catch-all: everything not matched by /api, /models, /prefect lands here
+# (longer prefixes win, so the order of applying does not matter).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oxus-frontend
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-frontend
+    app.kubernetes.io/part-of: oxus
+spec:
+  ingressClassName: <INGRESS_CLASS>
+  tls:
+    - hosts:
+        - <DOMAIN>
+      secretName: agrobank-tls
+  rules:
+    - host: <DOMAIN>
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: oxus-frontend
+                port:
+                  name: http

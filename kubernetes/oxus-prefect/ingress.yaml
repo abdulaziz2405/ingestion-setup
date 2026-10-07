@@ -1,0 +1,31 @@
+# Use EITHER this file OR httproute.yaml, not both.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: oxus-prefect
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-prefect-server
+    app.kubernetes.io/part-of: oxus
+  annotations:
+    # ingress-nginx proxies websockets (Prefect UI event stream) without extra config.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: <INGRESS_CLASS>
+  tls:
+    - hosts:
+        - <DOMAIN>
+      secretName: agrobank-tls
+  rules:
+    - host: <DOMAIN>
+      http:
+        paths:
+          # Path is passed through untouched: the server runs with PREFECT_UI_SERVE_BASE=/prefect.
+          - path: /prefect
+            pathType: Prefix
+            backend:
+              service:
+                name: oxus-prefect-server
+                port:
+                  name: http

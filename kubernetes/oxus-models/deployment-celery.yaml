@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oxus-models-celery
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-models-celery
+    app.kubernetes.io/part-of: oxus
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oxus-models-celery
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oxus-models-celery
+        app.kubernetes.io/part-of: oxus
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: gitlab-registry
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: celery
+          # Same image tag as deployment-api.yaml: bump both together.
+          image: registry.gitlab.com/amudario/development/oxus-models:agrobank-<MODELS_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          args: ["celery", "-A", "celery_app", "worker", "--loglevel=info", "--concurrency=2"]
+          envFrom:
+            - secretRef:
+                name: oxus-models-env
+          # Celery names the node celery@<hostname>; in a pod hostname = pod name.
+          startupProbe:
+            exec:
+              command: ["sh", "-c", "celery -A celery_app inspect ping -d celery@$(hostname) -t 5 >/dev/null 2>&1"]
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            timeoutSeconds: 15
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "celery -A celery_app inspect ping -d celery@$(hostname) -t 5 >/dev/null 2>&1"]
+            periodSeconds: 60
+            timeoutSeconds: 15
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            # limits:
+            #   memory: 2Gi

@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oxus-prefect-worker
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-prefect-worker
+    app.kubernetes.io/part-of: oxus
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  # Stop the old worker before starting the new one, like the systemd unit did:
+  # never two workers picking up the same scheduled runs during a rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oxus-prefect-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oxus-prefect-worker
+        app.kubernetes.io/part-of: oxus
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: gitlab-registry
+      # docker stop -t 120 + margin: lets running flows finish.
+      terminationGracePeriodSeconds: 150
+      initContainers:
+        # Wait up to 2 min for the server API (PREFECT_API_URL from the worker secret).
+        - name: wait-for-server
+          image: registry.gitlab.com/amudario/development/oxus-prefect:agrobank-<PREFECT_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              for i in $(seq 1 120); do
+                curl -fsS "${PREFECT_API_URL%/}/health" >/dev/null 2>&1 && exit 0
+                sleep 1
+              done
+              echo "server API not ready at ${PREFECT_API_URL}" >&2
+              exit 1
+          envFrom:
+            - secretRef:
+                name: oxus-prefect-worker-env
+        # Creates the dev/test/prod work pools if missing and applies prefect.prod.yaml.
+        - name: deploy-flows
+          image: registry.gitlab.com/amudario/development/oxus-prefect:agrobank-<PREFECT_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/prefect
+          args: ["bash", "/opt/prefect/scripts/init.sh"]
+          envFrom:
+            - secretRef:
+                name: oxus-prefect-worker-env
+          env:
+            - name: PREFECT_DEPLOY_FILE
+              value: prefect.prod.yaml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+      containers:
+        - name: worker
+          image: registry.gitlab.com/amudario/development/oxus-prefect:agrobank-<PREFECT_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          workingDir: /opt/prefect
+          args: ["prefect", "worker", "start", "--pool", "prod", "--type", "process"]
+          envFrom:
+            - secretRef:
+                name: oxus-prefect-worker-env
+          # Readiness only (no liveness): a server outage must not kill running flows.
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "curl -fsS \"${PREFECT_API_URL%/}/health\" >/dev/null"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # From the docker flags: --cpus 2, --memory 2g, --memory-reservation 256m.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi

@@ -1,0 +1,25 @@
+# Use EITHER this file OR ingress.yaml, not both.
+# No request timeout here on purpose: the Prefect UI keeps a websocket open.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: oxus-prefect
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-prefect-server
+    app.kubernetes.io/part-of: oxus
+spec:
+  parentRefs:
+    - name: <GATEWAY_NAME>
+      namespace: <GATEWAY_NAMESPACE>
+  hostnames:
+    - <DOMAIN>
+  rules:
+    # Path is passed through untouched: the server runs with PREFECT_UI_SERVE_BASE=/prefect.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /prefect
+      backendRefs:
+        - name: oxus-prefect-server
+          port: 4200

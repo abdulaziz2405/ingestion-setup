@@ -1,0 +1,30 @@
+# OPTIONAL: only if you use the HTTPRoutes AND the cluster has no Gateway you can attach to.
+# If a shared Gateway already exists, skip this file and point the httproute.yaml
+# parentRefs at it instead (see README.md, "Routing").
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: agrobank-gateway
+  namespace: agrobank
+spec:
+  gatewayClassName: <GATEWAY_CLASS>   # kubectl get gatewayclass   (e.g. istio, cilium, eg, traefik)
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      hostname: <DOMAIN>
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: <DOMAIN>
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: agrobank-tls
+      allowedRoutes:
+        namespaces:
+          from: Same

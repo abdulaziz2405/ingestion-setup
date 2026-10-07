@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: oxus-prefect-server
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-prefect-server
+    app.kubernetes.io/part-of: oxus
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: oxus-prefect-server
+  ports:
+    - name: http
+      port: 4200
+      targetPort: http

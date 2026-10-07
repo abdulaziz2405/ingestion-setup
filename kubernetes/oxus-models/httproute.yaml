@@ -1,0 +1,26 @@
+# Use EITHER this file OR ingress.yaml, not both.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: oxus-models
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-models-api
+    app.kubernetes.io/part-of: oxus
+spec:
+  parentRefs:
+    - name: <GATEWAY_NAME>
+      namespace: <GATEWAY_NAMESPACE>
+  hostnames:
+    - <DOMAIN>
+  rules:
+    # Path is passed through untouched: the app runs with API_ROOT_PATH=/models/api.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /models
+      backendRefs:
+        - name: oxus-models-api
+          port: 8011
+      timeouts:
+        request: 120s

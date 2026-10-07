@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oxus-backend
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-backend
+    app.kubernetes.io/part-of: oxus
+spec:
+  # Keep 1 until you have checked README.md "Scaling": migrations run in an initContainer
+  # and SESSION_DRIVER=file keeps sessions per pod.
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oxus-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oxus-backend
+        app.kubernetes.io/part-of: oxus
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: gitlab-registry
+      initContainers:
+        # Same as the systemd ExecStartPre: `php artisan migrate --force`.
+        - name: migrate
+          image: registry.gitlab.com/amudario/development/backend2:agrobank-<BACKEND_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "php artisan migrate --force"]
+          env:
+            - name: WWWUSER
+              value: "1000"
+          volumeMounts:
+            - name: env
+              mountPath: /var/www/html/.env
+              subPath: .env
+              readOnly: true
+      containers:
+        - name: app
+          image: registry.gitlab.com/amudario/development/backend2:agrobank-<BACKEND_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: WWWUSER
+              value: "1000"
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: env
+              mountPath: /var/www/html/.env
+              subPath: .env
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36        # up to 3 min to come up
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            # limits:
+            #   memory: 1Gi
+      volumes:
+        # The app reads a Laravel .env file, not env vars: the Secret holds one key `.env`.
+        - name: env
+          secret:
+            secretName: oxus-backend-env

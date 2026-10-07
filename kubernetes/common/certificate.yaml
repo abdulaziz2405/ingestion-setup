@@ -1,0 +1,16 @@
+# OPTIONAL: only if the cluster runs cert-manager.
+# Issues the TLS certificate for <DOMAIN> into the Secret `agrobank-tls`,
+# which every ingress.yaml (and common/gateway.yaml) references.
+# No cert-manager? Create the Secret by hand instead, see README.md, step 3.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: agrobank-tls
+  namespace: agrobank
+spec:
+  secretName: agrobank-tls
+  dnsNames:
+    - <DOMAIN>
+  issuerRef:
+    kind: ClusterIssuer        # or Issuer, if the cluster only has a namespaced one
+    name: <CLUSTER_ISSUER>     # kubectl get clusterissuer

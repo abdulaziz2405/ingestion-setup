@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: oxus-backend
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-backend
+    app.kubernetes.io/part-of: oxus
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: oxus-backend
+  ports:
+    # 8080 = the host port the VM setup used, so in-cluster URLs keep the same port.
+    - name: http
+      port: 8080
+      targetPort: http

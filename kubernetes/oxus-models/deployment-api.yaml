@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oxus-models-api
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: oxus-models-api
+    app.kubernetes.io/part-of: oxus
+spec:
+  # Keep 1: migrations + deploy_seed run in initContainers (README.md "Scaling").
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oxus-models-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oxus-models-api
+        app.kubernetes.io/part-of: oxus
+    spec:
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: gitlab-registry
+      initContainers:
+        # Same as the systemd ExecStartPre steps, in the same order.
+        - name: migrate
+          image: registry.gitlab.com/amudario/development/oxus-models:agrobank-<MODELS_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "alembic upgrade head"]
+          envFrom:
+            - secretRef:
+                name: oxus-models-env
+        - name: deploy-seed
+          image: registry.gitlab.com/amudario/development/oxus-models:agrobank-<MODELS_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "-c", "python -m scripts.deploy_seed"]
+          envFrom:
+            - secretRef:
+                name: oxus-models-env
+      containers:
+        - name: api
+          image: registry.gitlab.com/amudario/development/oxus-models:agrobank-<MODELS_PIPELINE_IID>
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - secretRef:
+                name: oxus-models-env
+          ports:
+            - name: http
+              containerPort: 8000
+          # /health is served at the root, not under API_ROOT_PATH (same as the docker health-cmd).
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            # limits:
+            #   memory: 2Gi
