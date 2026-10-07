@@ -1,0 +1,97 @@
+# OPTION B (no reachable Vault). Use with secret-local-vault.yaml, instead of secret.yaml + job.yaml.
+# One-off seeder (applications/agrobank-seed.md). Run it three times, changing only `args`:
+#   1. ["preflight"]            -> must end with "OK    preflight complete — ready to seed"
+#   2. ["seed", "--dry-run"]    -> rehearsal, everything rolled back
+#   3. ["seed"]                 -> the real run (AGROBANK_SEED_CONFIRM below must equal the backend DB name)
+# Later, any time:  ["verify"].   Contacts nothing, lists the payload:  ["plan"]
+# A Job cannot be re-applied with new args: delete it first (README.md, step 6).
+#
+# The seeder reads its DB/S3 credentials only from Vault. So the pod runs its own throwaway
+# Vault (dev mode: in-memory, listening on 127.0.0.1 inside the pod only), loads
+# secret-local-vault.yaml into it, and the seeder talks to that. Needs Kubernetes >= 1.29
+# (native sidecar: initContainer with restartPolicy: Always).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agrobank-seed-local-vault
+  namespace: agrobank
+  labels:
+    app.kubernetes.io/name: agrobank-seed
+    app.kubernetes.io/part-of: oxus
+spec:
+  backoffLimit: 0                    # never retry a seed on its own
+  ttlSecondsAfterFinished: 86400     # keep the pod (and its logs) for a day
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agrobank-seed
+        app.kubernetes.io/part-of: oxus
+    spec:
+      restartPolicy: Never
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: gitlab-registry
+      initContainers:
+        # Sidecar: starts first, the seeder starts only once the keys are loaded,
+        # and it is stopped automatically when the seeder finishes.
+        - name: vault
+          image: hashicorp/vault:1.18
+          imagePullPolicy: IfNotPresent
+          restartPolicy: Always
+          command:
+            - sh
+            - -c
+            - |
+              vault server -dev -dev-listen-address=127.0.0.1:8200 -dev-root-token-id="$VAULT_TOKEN" &
+              pid=$!
+              trap 'kill $pid; exit 0' TERM INT
+              until vault status >/dev/null 2>&1; do sleep 1; done
+              set --
+              for f in /seed-secret/*; do set -- "$@" "$(basename "$f")=@$f"; done
+              vault kv put secret/amudario/agrobank/seed "$@" >/dev/null
+              echo "loaded $# keys into secret/amudario/agrobank/seed"
+              touch /tmp/loaded
+              wait $pid
+          env:
+            - name: VAULT_ADDR
+              value: http://127.0.0.1:8200
+            - name: VAULT_TOKEN
+              value: local-seed-only        # pod-local dev Vault, not reachable from outside the pod
+          startupProbe:
+            exec:
+              command: ["test", "-f", "/tmp/loaded"]
+            periodSeconds: 2
+            failureThreshold: 60
+          volumeMounts:
+            - name: seed-secret
+              mountPath: /seed-secret
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+      containers:
+        - name: seed
+          image: registry.gitlab.com/amudario/development/agrobank-seed:latest
+          imagePullPolicy: Always
+          args: ["preflight"]
+          env:
+            - name: VAULT_ADDR
+              value: http://127.0.0.1:8200
+            - name: VAULT_TOKEN
+              value: local-seed-only
+            - name: AGROBANK_SEED_CONFIRM
+              value: amudario
+          volumeMounts:
+            - name: state
+              mountPath: /state
+      volumes:
+        - name: seed-secret
+          secret:
+            secretName: agrobank-seed-env
+            defaultMode: 0400
+        # The docker setup used a named volume; inside one Job run emptyDir is equivalent.
+        - name: state
+          emptyDir: {}

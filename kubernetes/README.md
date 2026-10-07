@@ -19,7 +19,7 @@ kubernetes/
 ├── oxus-models/                # deployment-api, deployment-celery, service, ingress | httproute, secret
 ├── oxus-prefect/               # deployment-server, deployment-worker, service, ingress | httproute, secret-server, secret-worker
 ├── oxus-frontend/              # deployment, service, ingress | httproute (no secret)
-└── agrobank-seed/              # job, secret (Vault token for the seeder)
+└── agrobank-seed/              # A: job + secret (Vault token) | B: job-local-vault + secret-local-vault (no Vault)
 ```
 
 ### Secrets
@@ -32,7 +32,8 @@ kubernetes/
 | `oxus-models/secret.yaml` | `oxus-models-env` | models API (+ inits), Celery | env vars (`envFrom`), as `docker --env-file` was |
 | `oxus-prefect/secret-server.yaml` | `oxus-prefect-server-env` | Prefect server | env vars (`envFrom`) |
 | `oxus-prefect/secret-worker.yaml` | `oxus-prefect-worker-env` | Prefect worker (+ inits) | env vars (`envFrom`) |
-| `agrobank-seed/secret.yaml` | `agrobank-seed-vault` | seed Job | env vars (`envFrom`) |
+| `agrobank-seed/secret.yaml` (option A) | `agrobank-seed-vault` | seed Job | env vars (`envFrom`): Vault address + token |
+| `agrobank-seed/secret-local-vault.yaml` (option B) | `agrobank-seed-env` | seed Job, local-Vault variant | **files** at `/seed-secret/<KEY>` in the Job's own Vault sidecar, which the seeder reads (see step 6) |
 
 Models and Prefect read their settings from environment variables, not from a file. On the VM
 the file was only docker's `--env-file` input, so injecting the keys as env vars is the exact
@@ -80,6 +81,7 @@ kubectl get ns agrobank                 # namespace name already taken?
 kubectl run nettest --rm -it --restart=Never --image=busybox:1.36 -- sh -c '
   nc -zvw3 <DB_SERVER> 5432; nc -zvw3 <DB_SERVER> 5433; nc -zvw3 <DB_SERVER> 6379;
   nc -zvw3 <TOOL_SERVER> 5432; nc -zvw3 <TOOL_SERVER> 8200; nc -zvw3 <INGESTION_SERVER> 8086'
+# <TOOL_SERVER> 8200 (Vault) only matters for seed option A, see step 6.
 ```
 
 Every line must say `open`. If not: firewall / `pg_hba.conf` / Redis `bind` on those servers
@@ -251,6 +253,14 @@ kubectl -n agrobank rollout status deploy/oxus-models-celery --timeout=5m
 
 ## 6. Seed (once), then the rest
 
+Two variants, pick **one**:
+- **A, `job.yaml` + `secret.yaml`:** the seeder reads its credentials from the existing Vault
+  (`<TOOL_SERVER>:8200`, secret already at `secret/amudario/agrobank/seed`). The default.
+- **B, `job-local-vault.yaml` + `secret-local-vault.yaml`:** no Vault reachable. You put the
+  DB/S3 credentials in the Secret and the Job brings its own temporary Vault.
+
+### Option A: existing Vault
+
 ```bash
 # Fill <TOOL_SERVER> and a Vault token that can read secret/amudario/agrobank/seed
 kubectl apply -f agrobank-seed/secret.yaml
@@ -267,6 +277,36 @@ kubectl -n agrobank exec deploy/oxus-models-api -c api -- sh -c 'cd /app && pyth
 # Revoke the seeder token in Vault, then:
 kubectl -n agrobank delete secret agrobank-seed-vault
 ```
+
+### Option B: no Vault, the Job brings its own
+
+```bash
+# Fill the DB + S3 credentials
+kubectl apply -f agrobank-seed/secret-local-vault.yaml
+
+# Run the Job; change `args:` in agrobank-seed/job-local-vault.yaml between runs:
+#   ["preflight"] -> ["seed", "--dry-run"] -> ["seed"]
+kubectl -n agrobank delete job agrobank-seed-local-vault --ignore-not-found
+kubectl apply -f agrobank-seed/job-local-vault.yaml
+kubectl -n agrobank logs job/agrobank-seed-local-vault -c vault       # "loaded 17 keys into ..."
+kubectl -n agrobank logs -f job/agrobank-seed-local-vault -c seed     # "waiting to start"? run it again in a few seconds
+
+# After the real seed: mirror device/disease links into oxus-models
+kubectl -n agrobank exec deploy/oxus-models-api -c api -- sh -c 'cd /app && python -m scripts.import_from_backend'
+
+# Done: drop the elevated DB/S3 credentials from the cluster
+kubectl -n agrobank delete secret agrobank-seed-env
+```
+
+How it works: the seeder only reads credentials from Vault (by design: they never sit in its
+environment). So `job-local-vault.yaml` runs a throwaway `hashicorp/vault:1.18` in dev mode
+next to it: in memory, listening on `127.0.0.1` inside the pod only, gone when the Job ends.
+It loads `agrobank-seed-env` into `secret/amudario/agrobank/seed` (the seeder's default path),
+and a startup probe holds the seeder back until that is done. This uses a native sidecar, so
+the cluster must be **Kubernetes ≥ 1.29** (`kubectl version`).
+
+Seeder exit codes (both options): `0` ok, `1` a check or load failed, `2` config/payload
+problem, `3` Vault, a database or S3 unreachable.
 
 ```bash
 # Prefect: server first, the worker waits for it and applies prefect.prod.yaml in an initContainer
